@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase";
 
 interface FormData {
   sleep_hours: number;
@@ -88,17 +89,34 @@ export default function CheckInPage() {
   const isDone = step === FIELDS.length + 1;
   const field = FIELDS[Math.min(step, FIELDS.length - 1)];
 
-  const handleSubmit = async () => {
-    setSaving(true);
-    try {
-      await fetch("/api/checkin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, date: new Date().toISOString().split("T")[0] }),
-      });
-    } catch (e) { console.error(e); }
-    finally { setSaving(false); setStep(FIELDS.length + 1); }
-  };
+const handleSubmit = async () => {
+  setSaving(true);
+  try {
+    const supabase = createClient();
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { error } = await supabase
+          .from("checkins")
+          .upsert({
+            user_id: user.id,
+            date: new Date().toISOString().split("T")[0],
+            sleep_hours: form.sleep_hours,
+            stress_level: form.stress_level,
+            study_minutes: form.study_minutes,
+            academic_load: form.academic_load,
+            energy_level: form.energy_level,
+          }, { onConflict: "user_id,date" });
+        if (error) console.error("Save error:", error);
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setSaving(false);
+    setStep(FIELDS.length + 1);
+  }
+};
 
   if (isDone) {
     return (
